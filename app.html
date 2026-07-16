@@ -1,0 +1,1883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArcGIS Map Explorer</title>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css" id="esri-theme-css" />
+  <script src="https://js.arcgis.com/4.30/"></script>
+
+  <style>
+    /* ── Design tokens ────────────────────────────────────────── */
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --surface-2:   #1f2937;
+      --border:      #30363d;
+      --accent:      #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.20);
+      --accent-dim:  #1d4ed8;
+      --text:        #e6edf3;
+      --text-muted:  #8b949e;
+      --success:     #22c55e;
+      --warning:     #f59e0b;
+      --danger:      #ef4444;
+      --font-ui:     'Inter', 'Segoe UI', system-ui, sans-serif;
+      --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
+      --radius:      8px;
+      --shadow:      0 4px 24px rgba(0,0,0,0.5);
+      --sidebar-w:   300px;
+    }
+
+    /* Light mode overrides */
+    body.light-mode {
+      --bg:          #f0f4f8;
+      --surface:     #ffffff;
+      --surface-2:   #e8edf2;
+      --border:      #cbd5e1;
+      --text:        #1e2937;
+      --text-muted:  #64748b;
+      --shadow:      0 4px 24px rgba(0,0,0,0.12);
+      --accent-glow: rgba(59, 130, 246, 0.12);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-ui);
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: background 0.25s, color 0.25s;
+    }
+
+    /* ── Top bar ──────────────────────────────────────────────── */
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      height: 52px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .logo-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent-glow);
+      flex-shrink: 0;
+    }
+
+    .topbar-spacer { flex: 1; }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+      white-space: nowrap;
+    }
+    .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .icon-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+    .icon-btn svg { flex-shrink: 0; }
+
+    /* ── Story overlay ────────────────────────────────────────── */
+    #story-overlay {
+      position: fixed;
+      inset: 52px 0 0 0;
+      z-index: 200;
+      background: var(--bg);
+      display: none;
+    }
+    #story-overlay.visible { display: block; }
+    #story-overlay iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: background 0.3s;
+      flex-shrink: 0;
+    }
+    .status-dot.ready   { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .status-dot.loading { background: var(--warning); animation: pulse 1s infinite; }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* ── Layout ───────────────────────────────────────────────── */
+    #layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ──────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: scroll;
+      overflow-x: hidden;
+      z-index: 10;
+      position: relative;
+      transition: background 0.25s, border-color 0.25s;
+      scrollbar-width: auto;
+      scrollbar-color: var(--accent) var(--surface-2);
+    }
+
+    #sidebar::-webkit-scrollbar { width: 12px; }
+    #sidebar::-webkit-scrollbar-track { background: var(--surface-2); border-left: 1px solid var(--border); }
+    #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; border: 2px solid var(--surface-2); transition: background 0.2s; }
+    #sidebar::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+    /* Resize handle */
+    #sidebar-resizer {
+      position: absolute;
+      top: 0; right: 0;
+      width: 5px;
+      height: 100%;
+      cursor: col-resize;
+      background: transparent;
+      z-index: 20;
+      transition: background 0.2s;
+    }
+    #sidebar-resizer:hover, #sidebar-resizer.dragging { background: var(--accent); }
+
+    /* Collapsible section wrapper */
+    .sidebar-section {
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      transition: border-color 0.25s;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+      background: var(--surface-2);
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    .section-header:hover { background: var(--accent-glow); }
+
+    .section-header h3 {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .section-chevron {
+      color: var(--text-muted);
+      font-size: 11px;
+      transition: transform 0.2s;
+    }
+    .section-header.collapsed .section-chevron { transform: rotate(-90deg); }
+
+    .section-body {
+      padding: 12px 14px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+      max-height: 240px;
+      transition: max-height 0.25s ease, padding 0.2s;
+      position: relative;
+    }
+    .section-body.collapsed {
+      max-height: 0 !important;
+      padding-top: 0;
+      padding-bottom: 0;
+      overflow: hidden;
+    }
+
+    .section-resize-grip {
+      height: 6px;
+      cursor: ns-resize;
+      background: transparent;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    .section-resize-grip:hover, .section-resize-grip.dragging { background: var(--accent-glow); }
+    .section-resize-grip::before {
+      content: '';
+      display: block;
+      width: 32px;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--border);
+      transition: background 0.2s;
+    }
+    .section-resize-grip:hover::before, .section-resize-grip.dragging::before { background: var(--accent); }
+    .section-body.collapsed + .section-resize-grip { display: none; }
+
+    /* ── Basemap grid ─────────────────────────────────────────── */
+    .basemap-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .basemap-btn {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      padding: 7px 6px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s, color 0.2s;
+      text-align: center;
+    }
+    .basemap-btn:hover { border-color: var(--accent); }
+    .basemap-btn.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+
+    /* ── Toggle row ───────────────────────────────────────────── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 0;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .toggle-switch { position: relative; width: 40px; height: 22px; }
+    .toggle-switch input { display: none; }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-track { background: var(--accent-dim); border-color: var(--accent); }
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 16px; height: 16px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(18px); background: white; }
+
+    /* ── Mini Overview Map ────────────────────────────────────── */
+    #overview-wrapper {
+      margin-top: 4px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      transition: border-color 0.3s;
+      position: relative;
+    }
+    #overview-wrapper:hover { border-color: var(--accent); }
+
+    #overviewDiv {
+      width: 100%;
+      height: 180px;
+      display: block;
+      cursor: crosshair;
+    }
+
+    #overview-label {
+      position: absolute;
+      bottom: 6px;
+      left: 6px;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      padding: 2px 7px;
+      border-radius: 4px;
+      pointer-events: none;
+      letter-spacing: 0.04em;
+    }
+
+    body.light-mode #overview-label { background: rgba(255,255,255,0.7); color: #1e2937; }
+
+    /* ── Coord display ────────────────────────────────────────── */
+    .coord-display {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 9px 11px;
+      line-height: 1.8;
+    }
+    .coord-display span { color: var(--accent); }
+
+    /* ── Layer list ───────────────────────────────────────────── */
+    .layer-list-empty {
+      text-align: center;
+      padding: 14px 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .add-layer-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px 14px;
+      background: var(--accent-glow);
+      border: 1px dashed var(--accent);
+      border-radius: var(--radius);
+      color: var(--accent);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .add-layer-btn:hover { background: rgba(59,130,246,0.2); }
+
+    /* ── Bookmark list ────────────────────────────────────────── */
+    .bookmark-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 10px;
+      margin-bottom: 5px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .bookmark-item:hover { border-color: var(--accent); background: var(--accent-glow); }
+    .bookmark-item-left { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+    .bookmark-item-left span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bm-icon { font-size: 14px; flex-shrink: 0; }
+    .bm-rm {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-muted); font-size: 13px; padding: 2px 4px;
+      border-radius: 4px; transition: color 0.2s;
+      flex-shrink: 0;
+    }
+    .bm-rm:hover { color: var(--danger); }
+
+    .bm-add-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .bm-input {
+      flex: 1;
+      padding: 7px 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .bm-input:focus { border-color: var(--accent); }
+    .bm-save-btn {
+      padding: 7px 12px;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      color: white;
+      font-family: var(--font-ui);
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    .bm-save-btn:hover { background: var(--accent); }
+
+    /* ── Drawing tools ────────────────────────────────────────── */
+    .draw-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .draw-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 8px 6px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s, color 0.2s;
+    }
+    .draw-btn:hover { border-color: var(--accent); }
+    .draw-btn.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+    .draw-clear-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      margin-top: 8px;
+      padding: 7px 14px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .draw-clear-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* ── Measurement section ──────────────────────────────────── */
+    .measure-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .measure-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 10px 4px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 11px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s, color 0.2s;
+    }
+    .measure-btn:hover { border-color: var(--accent); }
+    .measure-btn.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+    .measure-btn .m-icon { font-size: 18px; }
+
+    .measure-result {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 9px 12px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.7;
+      min-height: 58px;
+    }
+    .measure-result .mval { color: var(--accent); font-weight: 600; }
+
+    .measure-clear-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      margin-top: 8px;
+      padding: 7px 14px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .measure-clear-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* ── Map container ────────────────────────────────────────── */
+    #map-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #viewDiv { width: 100%; height: 100%; }
+
+    /* ── Loading overlay ──────────────────────────────────────── */
+    #loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 50;
+      transition: opacity 0.4s;
+    }
+    #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-overlay p { font-size: 13px; color: var(--text-muted); font-family: var(--font-mono); }
+
+    /* ── Legend panel ─────────────────────────────────────────── */
+    #legendPanel {
+      position: absolute;
+      left: 16px;
+      bottom: 16px;
+      width: 240px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      z-index: 40;
+      overflow: hidden;
+      transition: background 0.25s, border-color 0.25s;
+    }
+    #legendHeader {
+      padding: 8px 12px;
+      cursor: pointer;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+    #legendBody { padding: 8px; }
+    #legendContainer {
+      width: 100%;
+      max-height: 120px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+      color: var(--text);
+    }
+
+    /* ── Map tooltip ──────────────────────────────────────────── */
+    #map-tooltip {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 9px 13px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      pointer-events: none;
+      box-shadow: var(--shadow);
+      line-height: 1.7;
+      min-width: 180px;
+      z-index: 30;
+      transition: background 0.25s, border-color 0.25s;
+    }
+    #map-tooltip .tip-label { color: var(--text-muted); margin-right: 4px; }
+    #map-tooltip .tip-val   { color: var(--accent); }
+
+    /* ── Drawing mode banner ──────────────────────────────────── */
+    #draw-banner {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--accent-dim);
+      color: white;
+      font-size: 13px;
+      font-family: var(--font-ui);
+      padding: 6px 18px;
+      border-radius: 20px;
+      z-index: 35;
+      pointer-events: none;
+      display: none;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+
+    /* ── Light mode adjustments for ESRI ─────────────────────── */
+    body.light-mode .esri-ui-corner .esri-component,
+    body.light-mode .esri-widget { color: var(--text) !important; }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  </style>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0d1117" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Map Explorer" />
+</head>
+<body>
+
+<!-- ── Top bar ───────────────────────────────────────────────── -->
+<div id="topbar">
+  <div class="logo">
+    <div class="logo-dot"></div>
+    ArcGIS Map Explorer
+  </div>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-actions">
+    <button class="icon-btn" id="story-toggle-btn" title="Switch between map and story">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+      </svg>
+      View Story
+    </button>
+
+    <button class="icon-btn" id="theme-toggle-btn" title="Toggle dark/light mode">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/>
+        <line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+      Light Mode
+    </button>
+
+    <div class="status-pill">
+      <div class="status-dot loading" id="status-dot"></div>
+      <span id="status-text">Initializing…</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Story overlay ─────────────────────────────────────────── -->
+<div id="story-overlay">
+  <iframe id="story-iframe" src="" title="Story" loading="lazy" allow="clipboard-write; fullscreen"></iframe>
+</div>
+
+<!-- ── Main layout ────────────────────────────────────────────── -->
+<div id="layout">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div id="sidebar-resizer"></div>
+
+    <!-- ── BASEMAP ────────────────────────────────────────────── -->
+    <div class="sidebar-section" id="sec-basemap">
+      <div class="section-header" data-target="body-basemap">
+        <h3>Basemap</h3>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body" id="body-basemap">
+        <div class="basemap-grid" id="basemap-grid">
+          <button class="basemap-btn active" data-id="dark-gray-vector">Dark Gray</button>
+          <button class="basemap-btn" data-id="streets-vector">Streets</button>
+          <button class="basemap-btn" data-id="satellite">Satellite</button>
+          <button class="basemap-btn" data-id="topo-vector">Topo</button>
+          <button class="basemap-btn" data-id="hybrid">Hybrid</button>
+          <button class="basemap-btn" data-id="osm">OpenStreetMap</button>
+        </div>
+      </div>
+      <div class="section-resize-grip" data-body="body-basemap"></div>
+    </div>
+
+    <!-- ── VIEW / OVERVIEW MAP ───────────────────────────────── -->
+    <div class="sidebar-section" id="sec-view">
+      <div class="section-header" data-target="body-view">
+        <h3>Overview Map</h3>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body" id="body-view" style="max-height: 260px; padding: 10px 10px 6px 10px;">
+        <div class="toggle-row" style="margin-bottom: 8px;">
+          <span style="font-size:12px; color: var(--text-muted);">Show overview</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-overview" checked />
+            <div class="toggle-track"></div>
+          </label>
+        </div>
+        <div id="overview-wrapper">
+          <div id="overviewDiv"></div>
+          <div id="overview-label">Click to jump · Syncs with main map</div>
+        </div>
+      </div>
+      <div class="section-resize-grip" data-body="body-view"></div>
+    </div>
+
+    <!-- ── COORDINATES ────────────────────────────────────────── -->
+    <div class="sidebar-section" id="sec-coords">
+      <div class="section-header" data-target="body-coords">
+        <h3>Cursor Coordinates</h3>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body" id="body-coords">
+        <div class="coord-display">
+          <div><span id="coord-lat">—</span> lat</div>
+          <div><span id="coord-lon">—</span> lon</div>
+          <div>Zoom <span id="coord-zoom">—</span></div>
+          <div>Scale 1:<span id="coord-scale">—</span></div>
+        </div>
+      </div>
+      <div class="section-resize-grip" data-body="body-coords"></div>
+    </div>
+
+    <!-- ── MEASUREMENT ────────────────────────────────────────── -->
+    <div class="sidebar-section" id="sec-measure">
+      <div class="section-header" data-target="body-measure">
+        <h3>Measurement</h3>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body" id="body-measure">
+        <div class="measure-grid">
+          <button class="measure-btn" id="meas-distance" title="Measure distance between two points">
+            <span class="m-icon">📏</span>
+            Distance
+          </button>
+          <button class="measure-btn" id="meas-area" title="Measure area of a polygon">
+            <span class="m-icon">⬛</span>
+            Area
+          </button>
+          <button class="measure-btn" id="meas-perimeter" title="Measure perimeter / polyline length">
+            <span class="m-icon">🔲</span>
+            Perimeter
+          </button>
+        </div>
+        <div class="measure-result" id="measure-result">
+          <span style="color:var(--text-muted);">Select a tool, then click the map.</span>
+        </div>
+        <button class="measure-clear-btn" id="measure-clear-btn">✕ Clear Measurement</button>
+      </div>
+      <div class="section-resize-grip" data-body="body-measure"></div>
+    </div>
+
+    <!-- ── DRAWING ────────────────────────────────────────────── -->
+    <div class="sidebar-section" id="sec-draw">
+      <div class="section-header" data-target="body-draw">
+        <h3>Drawing Tools</h3>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body" id="body-draw">
+        <div class="draw-grid">
+          <button class="draw-btn" data-action="point">📍 Point</button>
+          <button class="draw-btn" data-action="polyline">〰 Line</button>
+          <button class="draw-btn" data-action="polygon">⬡ Polygon</button>
+          <button class="draw-btn" data-action="rectangle">▭ Rectangle</button>
+          <button class="draw-btn" data-action="circle">⊙ Circle</button>
+          <button class="draw-btn" id="draw-stop-btn">⬛ Stop</button>
+        </div>
+        <button class="draw-clear-btn" id="draw-clear-btn">✕ Clear All Drawings</button>
+      </div>
+      <div class="section-resize-grip" data-body="body-draw"></div>
+    </div>
+
+    <!-- ── BOOKMARKS ─────────────────────────────────────────── -->
+    <div class="sidebar-section" id="sec-bookmarks">
+      <div class="section-header" data-target="body-bookmarks">
+        <h3>Bookmarks</h3>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body" id="body-bookmarks">
+        <div id="bookmark-list">
+          <div class="layer-list-empty" id="bm-empty">No bookmarks saved yet.</div>
+        </div>
+        <div class="bm-add-row">
+          <input class="bm-input" id="bm-name-input" type="text" placeholder="Bookmark name…" />
+          <button class="bm-save-btn" id="bm-save-btn">Save View</button>
+        </div>
+      </div>
+      <div class="section-resize-grip" data-body="body-bookmarks"></div>
+    </div>
+
+    <!-- ── DATA LAYERS ────────────────────────────────────────── -->
+    <div class="sidebar-section" id="sec-layers" style="flex:1; min-height: 80px;">
+      <div class="section-header" data-target="body-layers">
+        <h3>Data Layers</h3>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body" id="body-layers" style="max-height: 1000px; flex: 1;">
+        <div id="layer-list" class="layer-list-empty">
+          No layers added yet.<br/>Use the button below to start.
+        </div>
+        <button class="add-layer-btn" id="add-layer-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Add Data Layer
+        </button>
+      </div>
+      <div class="section-resize-grip" data-body="body-layers"></div>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- Map -->
+  <div id="map-container">
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <p>Loading ArcGIS runtime…</p>
+    </div>
+
+    <div id="viewDiv"></div>
+
+    <!-- Legend -->
+    <div id="legendPanel">
+      <div id="legendHeader">
+        <span>Legend</span>
+        <span id="legendChevron">▼</span>
+      </div>
+      <div id="legendBody">
+        <div id="legendContainer"></div>
+      </div>
+    </div>
+
+    <!-- Drawing mode banner -->
+    <div id="draw-banner">✏️ Drawing mode active — click map to draw</div>
+
+    <!-- Live coordinate tooltip -->
+    <div id="map-tooltip">
+      <div><span class="tip-label">Hover map</span> to see coordinates</div>
+    </div>
+  </div>
+
+</div><!-- /layout -->
+
+<script>
+require([
+  "esri/Map",
+  "esri/views/MapView",
+  "esri/Basemap",
+  "esri/widgets/Zoom",
+  "esri/widgets/Home",
+  "esri/widgets/ScaleBar",
+  "esri/widgets/Compass",
+  "esri/widgets/Search",
+  "esri/widgets/Legend",
+  "esri/widgets/DistanceMeasurement2D",
+  "esri/widgets/AreaMeasurement2D",
+  "esri/layers/GraphicsLayer",
+  "esri/Graphic",
+  "esri/geometry/Polygon",
+  "esri/geometry/Polyline",
+  "esri/geometry/Point",
+  "esri/geometry/Extent",
+  "esri/views/draw/Draw"
+], function(
+  Map, MapView, Basemap, Zoom, Home, ScaleBar, Compass, Search, Legend,
+  DistanceMeasurement2D, AreaMeasurement2D,
+  GraphicsLayer, Graphic, Polygon, Polyline, Point, Extent, Draw
+) {
+
+  // ── State ──────────────────────────────────────────────────
+  let currentView    = null;
+  let overviewView   = null;
+  let extentGraphic  = null;
+  let activeDrawTool = null;
+  let drawInstance   = null;
+  let activeMeasure  = null;
+  let measureWidget  = null;
+  let bookmarks      = JSON.parse(localStorage.getItem("gis_bookmarks") || "[]");
+  let overviewVisible = true;
+
+  const graphicsLayer = new GraphicsLayer({ title: "Drawings" });
+  // Separate graphics layer just for the overview extent box
+  const overviewExtentLayer = new GraphicsLayer();
+
+  const $ = id => document.getElementById(id);
+
+  function setStatus(state, text) {
+    $("status-dot").className = "status-dot " + state;
+    $("status-text").textContent = text;
+  }
+
+  // ── Main Map ───────────────────────────────────────────────
+  const map = new Map({ basemap: "dark-gray-vector", layers: [graphicsLayer] });
+
+  // Overview map uses a lighter basemap so it contrasts with main
+  const overviewMap = new Map({
+    basemap: "gray-vector",
+    layers: [overviewExtentLayer]
+  });
+
+  // ── Build main view ────────────────────────────────────────
+  const mainView = new MapView({
+    container: "viewDiv",
+    map: map,
+    center: [-78.6569, 35.7915],
+    zoom: 10
+  });
+
+  mainView.ui.remove("zoom");
+  mainView.ui.add(new Zoom({ view: mainView }), "top-left");
+  mainView.ui.add(new Home({ view: mainView }), "top-left");
+  mainView.ui.add(new ScaleBar({ view: mainView, unit: "dual" }), "bottom-left");
+  mainView.ui.add(new Compass({ view: mainView }), "top-left");
+
+  mainView.on("pointer-move", evt => {
+    const pt = mainView.toMap({ x: evt.x, y: evt.y });
+    if (!pt) return;
+    $("coord-lat").textContent  = pt.latitude.toFixed(5);
+    $("coord-lon").textContent  = pt.longitude.toFixed(5);
+    $("coord-zoom").textContent = Math.round(mainView.zoom);
+    $("coord-scale").textContent = Math.round(mainView.scale).toLocaleString();
+    $("map-tooltip").innerHTML = `
+      <div><span class="tip-label">lat</span><span class="tip-val">${pt.latitude.toFixed(5)}</span></div>
+      <div><span class="tip-label">lon</span><span class="tip-val">${pt.longitude.toFixed(5)}</span></div>
+      <div><span class="tip-label">zoom</span><span class="tip-val">${Math.round(mainView.zoom)}</span></div>
+    `;
+  });
+
+  mainView.when(() => {
+    $("loading-overlay").classList.add("hidden");
+    setStatus("ready", "Map ready");
+    currentView = mainView;
+
+    const search = new Search({ view: mainView, popupEnabled: false });
+    mainView.ui.add(search, "top-right");
+
+    const legend = new Legend({ view: mainView, style: "classic" });
+    legend.container = "legendContainer";
+
+    drawInstance = new Draw({ view: mainView });
+
+    loadSavedLayers();
+    initOverviewMap();
+  }, err => {
+    setStatus("", "Error loading map");
+    console.error(err);
+  });
+
+  // ══════════════════════════════════════════════════════════
+  // ── MINI OVERVIEW MAP ────────────────────────────────────
+  // ══════════════════════════════════════════════════════════
+
+  function initOverviewMap() {
+    overviewView = new MapView({
+      container: "overviewDiv",
+      map: overviewMap,
+      // Start zoomed out 5 levels from main
+      center: mainView.center,
+      zoom: Math.max(0, mainView.zoom - 5),
+      // Disable all interaction widgets on the overview
+      ui: { components: [] },
+      navigation: {
+        mouseWheelZoomEnabled: false,
+        browserTouchPanEnabled: false
+      }
+    });
+
+    // Remove the default attribution / zoom controls
+    overviewView.ui.empty("bottom-left");
+    overviewView.ui.empty("bottom-right");
+    overviewView.ui.empty("top-left");
+    overviewView.ui.empty("top-right");
+
+    overviewView.when(() => {
+      // Draw the initial extent box
+      updateOverviewExtent();
+
+      // Keep the overview synced as main map moves
+      mainView.watch("extent", () => {
+        updateOverviewExtent();
+      });
+
+      mainView.watch("center", () => {
+        if (!overviewView) return;
+        overviewView.goTo({
+          center: mainView.center,
+          zoom: Math.max(0, mainView.zoom - 5)
+        }, { animate: false }).catch(() => {});
+      });
+
+      mainView.watch("zoom", () => {
+        if (!overviewView) return;
+        overviewView.goTo({
+          center: mainView.center,
+          zoom: Math.max(0, mainView.zoom - 5)
+        }, { animate: false }).catch(() => {});
+      });
+    });
+
+    // Click on overview to jump main map there
+    overviewView.on("click", evt => {
+      const pt = overviewView.toMap({ x: evt.x, y: evt.y });
+      if (!pt || !mainView) return;
+      mainView.goTo({ center: pt }, { duration: 400, easing: "ease-in-out" }).catch(() => {});
+    });
+  }
+
+  function updateOverviewExtent() {
+    if (!overviewView || !mainView || !mainView.extent) return;
+
+    overviewExtentLayer.removeAll();
+
+    const ext = mainView.extent;
+
+    // Build a polygon from the current main map extent
+    const ring = [
+      [ext.xmin, ext.ymin],
+      [ext.xmax, ext.ymin],
+      [ext.xmax, ext.ymax],
+      [ext.xmin, ext.ymax],
+      [ext.xmin, ext.ymin]
+    ];
+
+    const extentPoly = new Polygon({
+      rings: [ring],
+      spatialReference: ext.spatialReference
+    });
+
+    extentGraphic = new Graphic({
+      geometry: extentPoly,
+      symbol: {
+        type: "simple-fill",
+        color: [239, 68, 68, 0.15],   // red tint fill
+        outline: {
+          color: [239, 68, 68, 1],    // solid red border
+          width: 2
+        }
+      }
+    });
+
+    overviewExtentLayer.add(extentGraphic);
+  }
+
+  // Toggle overview visibility
+  $("toggle-overview").addEventListener("change", e => {
+    overviewVisible = e.target.checked;
+    const wrapper = $("overview-wrapper");
+    if (overviewVisible) {
+      wrapper.style.display = "block";
+      // Re-sync position
+      if (overviewView && mainView) {
+        overviewView.goTo({
+          center: mainView.center,
+          zoom: Math.max(0, mainView.zoom - 5)
+        }, { animate: false }).catch(() => {});
+        updateOverviewExtent();
+      }
+    } else {
+      wrapper.style.display = "none";
+    }
+  });
+
+  // ── Basemap ────────────────────────────────────────────────
+  document.querySelectorAll(".basemap-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      map.basemap = btn.dataset.id;
+      document.querySelectorAll(".basemap-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════
+  // ── MEASUREMENT ──────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════
+
+  function clearMeasure() {
+    if (measureWidget) {
+      measureWidget.destroy();
+      measureWidget = null;
+    }
+    activeMeasure = null;
+    document.querySelectorAll(".measure-btn").forEach(b => b.classList.remove("active"));
+    $("measure-result").innerHTML = `<span style="color:var(--text-muted);">Select a tool, then click the map.</span>`;
+  }
+
+  function startMeasure(type) {
+    if (!mainView) return;
+
+    clearMeasure();
+    stopDrawing();
+    activeMeasure = type;
+
+    document.querySelectorAll(".measure-btn").forEach(b => b.classList.remove("active"));
+    $("meas-" + type).classList.add("active");
+
+    if (type === "distance") {
+      measureWidget = new DistanceMeasurement2D({ view: mainView, unit: "miles" });
+      mainView.ui.add(measureWidget, "manual");
+      measureWidget.viewModel.start();
+      $("measure-result").innerHTML = `<span style="color:var(--text-muted);">Click two points to measure distance.</span>`;
+
+      measureWidget.watch("viewModel.measurement", m => {
+        if (m && m.length) {
+          const mi = (m.length.value).toFixed(3);
+          const km = (m.length.value * 1.609344).toFixed(3);
+          $("measure-result").innerHTML = `
+            <div>Distance</div>
+            <div class="mval">${mi} mi &nbsp;/&nbsp; ${km} km</div>
+          `;
+        }
+      });
+
+    } else if (type === "area" || type === "perimeter") {
+      measureWidget = new AreaMeasurement2D({ view: mainView, unit: "square-miles" });
+      mainView.ui.add(measureWidget, "manual");
+      measureWidget.viewModel.start();
+      $("measure-result").innerHTML = `<span style="color:var(--text-muted);">Click to draw a polygon and measure.</span>`;
+
+      measureWidget.watch("viewModel.measurement", m => {
+        if (m) {
+          const areaSqMi = m.area      ? m.area.value.toFixed(3)                  : "—";
+          const areaSqKm = m.area      ? (m.area.value * 2.58999).toFixed(3)      : "—";
+          const perimMi  = m.perimeter ? m.perimeter.value.toFixed(3)             : "—";
+          const perimKm  = m.perimeter ? (m.perimeter.value * 1.60934).toFixed(3) : "—";
+
+          if (type === "area") {
+            $("measure-result").innerHTML = `
+              <div>Area</div>
+              <div class="mval">${areaSqMi} mi² &nbsp;/&nbsp; ${areaSqKm} km²</div>
+            `;
+          } else {
+            $("measure-result").innerHTML = `
+              <div>Perimeter</div>
+              <div class="mval">${perimMi} mi &nbsp;/&nbsp; ${perimKm} km</div>
+            `;
+          }
+        }
+      });
+    }
+  }
+
+  $("meas-distance").addEventListener("click",  () => startMeasure("distance"));
+  $("meas-area").addEventListener("click",      () => startMeasure("area"));
+  $("meas-perimeter").addEventListener("click", () => startMeasure("perimeter"));
+  $("measure-clear-btn").addEventListener("click", clearMeasure);
+
+  // ══════════════════════════════════════════════════════════
+  // ── DRAWING TOOLS ────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════
+
+  const symbolFor = (type) => {
+    if (type === "point") {
+      return { type: "simple-marker", color: [59, 130, 246, 0.9], size: 10, outline: { color: "white", width: 1.5 } };
+    }
+    if (type === "polyline") {
+      return { type: "simple-line", color: [59, 130, 246, 0.9], width: 2.5 };
+    }
+    return {
+      type: "simple-fill",
+      color: [59, 130, 246, 0.25],
+      outline: { color: [59, 130, 246, 0.9], width: 2 }
+    };
+  };
+
+  let manualDragActive = false;
+  let manualDragStart  = null;
+
+  const previewSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  previewSvg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:25;";
+  $("map-container").appendChild(previewSvg);
+
+  const previewRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  previewRect.setAttribute("fill", "rgba(59,130,246,0.18)");
+  previewRect.setAttribute("stroke", "#3b82f6");
+  previewRect.setAttribute("stroke-width", "2");
+  previewRect.setAttribute("stroke-dasharray", "6 3");
+  previewRect.style.display = "none";
+  previewSvg.appendChild(previewRect);
+
+  const previewEllipse = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+  previewEllipse.setAttribute("fill", "rgba(59,130,246,0.18)");
+  previewEllipse.setAttribute("stroke", "#3b82f6");
+  previewEllipse.setAttribute("stroke-width", "2");
+  previewEllipse.setAttribute("stroke-dasharray", "6 3");
+  previewEllipse.style.display = "none";
+  previewSvg.appendChild(previewEllipse);
+
+  function hidePreview() {
+    previewRect.style.display    = "none";
+    previewEllipse.style.display = "none";
+  }
+
+  function makeRectRing(p1, p2) {
+    return [[
+      [p1.x, p1.y], [p2.x, p1.y],
+      [p2.x, p2.y], [p1.x, p2.y],
+      [p1.x, p1.y]
+    ]];
+  }
+
+  function makeCircleRing(cx, cy, r, steps) {
+    steps = steps || 64;
+    const pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+    }
+    return [pts];
+  }
+
+  function screenToMap(sx, sy) {
+    const rect = $("viewDiv").getBoundingClientRect();
+    return mainView.toMap({ x: sx - rect.left, y: sy - rect.top });
+  }
+
+  function disableMapNav() {
+    if (!mainView) return;
+    mainView.navigation.mouseWheelZoomEnabled  = false;
+    mainView.navigation.browserTouchPanEnabled = false;
+    mainView._drawNavHandle = mainView.on("drag", e => e.stopPropagation());
+  }
+  function enableMapNav() {
+    if (!mainView) return;
+    mainView.navigation.mouseWheelZoomEnabled  = true;
+    mainView.navigation.browserTouchPanEnabled = true;
+    if (mainView._drawNavHandle) {
+      mainView._drawNavHandle.remove();
+      mainView._drawNavHandle = null;
+    }
+  }
+
+  const viewDiv = $("viewDiv");
+
+  viewDiv.addEventListener("mousedown", e => {
+    if (!activeDrawTool || !["rectangle","circle"].includes(activeDrawTool)) return;
+    if (e.button !== 0) return;
+    manualDragActive = true;
+    manualDragStart  = { x: e.clientX, y: e.clientY };
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  window.addEventListener("mousemove", e => {
+    if (!manualDragActive || !manualDragStart) return;
+    const x0 = manualDragStart.x, y0 = manualDragStart.y;
+    const x1 = e.clientX,         y1 = e.clientY;
+    const rect = $("viewDiv").getBoundingClientRect();
+    const rx = Math.min(x0, x1) - rect.left;
+    const ry = Math.min(y0, y1) - rect.top;
+    const rw = Math.abs(x1 - x0);
+    const rh = Math.abs(y1 - y0);
+
+    if (activeDrawTool === "rectangle") {
+      previewEllipse.style.display = "none";
+      previewRect.style.display = "block";
+      previewRect.setAttribute("x", rx);
+      previewRect.setAttribute("y", ry);
+      previewRect.setAttribute("width",  rw);
+      previewRect.setAttribute("height", rh);
+    } else {
+      previewRect.style.display = "none";
+      previewEllipse.style.display = "block";
+      previewEllipse.setAttribute("cx", (Math.min(x0,x1) - rect.left) + rw/2);
+      previewEllipse.setAttribute("cy", (Math.min(y0,y1) - rect.top)  + rh/2);
+      previewEllipse.setAttribute("rx", rw/2);
+      previewEllipse.setAttribute("ry", rh/2);
+    }
+  });
+
+  window.addEventListener("mouseup", e => {
+    if (!manualDragActive || !manualDragStart) return;
+    manualDragActive = false;
+    hidePreview();
+
+    const x0 = manualDragStart.x, y0 = manualDragStart.y;
+    const x1 = e.clientX,         y1 = e.clientY;
+    manualDragStart = null;
+
+    if (Math.abs(x1-x0) < 5 && Math.abs(y1-y0) < 5) return;
+
+    const p0 = screenToMap(x0, y0);
+    const p1 = screenToMap(x1, y1);
+    if (!p0 || !p1) return;
+
+    const sr = mainView.spatialReference;
+    let ring;
+
+    if (activeDrawTool === "rectangle") {
+      ring = makeRectRing(p0, p1);
+    } else {
+      const cx = (p0.x + p1.x) / 2;
+      const cy = (p0.y + p1.y) / 2;
+      const dx = p1.x - p0.x, dy = p1.y - p0.y;
+      const r  = Math.sqrt(dx*dx + dy*dy) / 2;
+      ring = makeCircleRing(cx, cy, r);
+    }
+
+    const geom = new Polygon({ rings: ring, spatialReference: sr });
+    const graphic = new Graphic({ geometry: geom, symbol: symbolFor("polygon") });
+    graphicsLayer.add(graphic);
+  });
+
+  function stopDrawing() {
+    if (drawInstance) drawInstance.reset();
+    manualDragActive = false;
+    manualDragStart  = null;
+    hidePreview();
+    enableMapNav();
+    activeDrawTool = null;
+    document.querySelectorAll(".draw-btn[data-action]").forEach(b => b.classList.remove("active"));
+    $("draw-banner").style.display = "none";
+  }
+
+  function startDraw(action) {
+    if (!mainView) return;
+    clearMeasure();
+    stopDrawing();
+    activeDrawTool = action;
+
+    document.querySelectorAll(".draw-btn[data-action]").forEach(b => b.classList.remove("active"));
+    document.querySelector(`.draw-btn[data-action="${action}"]`).classList.add("active");
+    $("draw-banner").style.display = "block";
+
+    if (action === "rectangle" || action === "circle") {
+      $("draw-banner").textContent = `✏️ ${action.charAt(0).toUpperCase()+action.slice(1)} — click & drag on map to draw`;
+      disableMapNav();
+      return;
+    }
+
+    $("draw-banner").textContent = `✏️ ${action.charAt(0).toUpperCase()+action.slice(1)} — click to add points, double-click to finish`;
+
+    const drawGeomType = (action === "point") ? "point"
+      : (action === "polyline") ? "polyline"
+      : "polygon";
+
+    const drawAction = drawInstance.create(drawGeomType, { mode: "click" });
+
+    drawAction.on(["draw-complete", "vertex-add"], evt => {
+      if (!evt.type.includes("complete")) return;
+
+      let geom;
+      const sr = mainView.spatialReference;
+
+      if (drawGeomType === "point") {
+        geom = new Point({ x: evt.coordinates[0], y: evt.coordinates[1], spatialReference: sr });
+      } else if (drawGeomType === "polyline") {
+        geom = new Polyline({ paths: [evt.vertices], spatialReference: sr });
+      } else {
+        geom = new Polygon({ rings: [evt.vertices], spatialReference: sr });
+      }
+
+      const symType = (drawGeomType === "point") ? "point"
+        : (drawGeomType === "polyline") ? "polyline"
+        : "polygon";
+
+      const graphic = new Graphic({ geometry: geom, symbol: symbolFor(symType) });
+      graphicsLayer.add(graphic);
+
+      stopDrawing();
+      setTimeout(() => startDraw(action), 50);
+    });
+  }
+
+  document.querySelectorAll(".draw-btn[data-action]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const action = btn.dataset.action;
+      if (activeDrawTool === action) { stopDrawing(); return; }
+      startDraw(action);
+    });
+  });
+
+  $("draw-stop-btn").addEventListener("click", stopDrawing);
+  $("draw-clear-btn").addEventListener("click", () => {
+    graphicsLayer.removeAll();
+    stopDrawing();
+  });
+
+  // ══════════════════════════════════════════════════════════
+  // ── BOOKMARKS ────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════
+
+  function saveBookmarks() {
+    localStorage.setItem("gis_bookmarks", JSON.stringify(bookmarks));
+  }
+
+  function renderBookmarks() {
+    const list = $("bookmark-list");
+    const empty = $("bm-empty");
+
+    list.querySelectorAll(".bookmark-item").forEach(el => el.remove());
+
+    if (!bookmarks.length) {
+      if (empty) empty.style.display = "block";
+      return;
+    }
+    if (empty) empty.style.display = "none";
+
+    bookmarks.forEach((bm, i) => {
+      const el = document.createElement("div");
+      el.className = "bookmark-item";
+      el.innerHTML = `
+        <div class="bookmark-item-left">
+          <span class="bm-icon">📌</span>
+          <span title="${bm.name}">${bm.name}</span>
+        </div>
+        <button class="bm-rm" data-i="${i}" title="Remove">✕</button>
+      `;
+      el.addEventListener("click", e => {
+        if (e.target.classList.contains("bm-rm")) return;
+        if (!mainView) return;
+        mainView.goTo({ center: [bm.lon, bm.lat], zoom: bm.zoom }).catch(() => {});
+      });
+      el.querySelector(".bm-rm").addEventListener("click", () => {
+        bookmarks.splice(i, 1);
+        saveBookmarks();
+        renderBookmarks();
+      });
+      list.appendChild(el);
+    });
+  }
+
+  $("bm-save-btn").addEventListener("click", () => {
+    if (!mainView) return;
+    const name = $("bm-name-input").value.trim() || ("View " + (bookmarks.length + 1));
+    const center = mainView.center;
+    bookmarks.push({ name, lat: center.latitude, lon: center.longitude, zoom: Math.round(mainView.zoom) });
+    saveBookmarks();
+    renderBookmarks();
+    $("bm-name-input").value = "";
+  });
+
+  $("bm-name-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") $("bm-save-btn").click();
+  });
+
+  renderBookmarks();
+
+  // ══════════════════════════════════════════════════════════
+  // ── LAYER MANAGEMENT ─────────────────────────────────────
+  // ══════════════════════════════════════════════════════════
+
+  function saveLayers() {
+    const data = map.layers.items
+      .filter(l => l !== graphicsLayer)
+      .map(lyr => ({
+        url: lyr.url,
+        title: lyr.title,
+        type: lyr.declaredClass.includes("CSV") ? "csv"
+             : lyr.declaredClass.includes("Tile") ? "tile"
+             : "feature"
+      }));
+    localStorage.setItem("savedLayers", JSON.stringify(data));
+  }
+
+  function loadSavedLayers() {
+    const data = JSON.parse(localStorage.getItem("savedLayers") || "[]");
+    data.forEach(l => addLayer(l.url, l.title, l.type));
+  }
+
+  $("add-layer-btn").addEventListener("click", showLayerDialog);
+
+  function showLayerDialog() {
+    const existing = $("layer-dialog");
+    if (existing) existing.remove();
+
+    const dialog = document.createElement("div");
+    dialog.id = "layer-dialog";
+    dialog.style.cssText = `
+      position:fixed;inset:0;z-index:200;
+      background:rgba(0,0,0,0.7);
+      display:flex;align-items:center;justify-content:center;
+    `;
+    dialog.innerHTML = `
+      <div style="
+        background:var(--surface-2);border:1px solid var(--border);
+        border-radius:12px;padding:28px;width:440px;
+        box-shadow:0 8px 40px rgba(0,0,0,0.7);
+        font-family:var(--font-ui);color:var(--text);
+      ">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <h2 style="font-size:16px;font-weight:600;">Add Data Layer</h2>
+          <button id="dialog-close" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;">✕</button>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:8px;">Layer Type</label>
+          <select id="layer-type" style="width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;">
+            <option value="feature">Feature Layer (URL)</option>
+            <option value="tile">Tile Layer (URL)</option>
+            <option value="csv">CSV Layer (URL)</option>
+          </select>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:8px;">Service URL</label>
+          <input id="layer-url" type="text" placeholder="https://services.arcgis.com/…/FeatureServer/0" style="width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none;" />
+        </div>
+        <div style="margin-bottom:18px;">
+          <label style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:8px;">Display Name</label>
+          <input id="layer-name" type="text" placeholder="My Layer" style="width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none;" />
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:18px;line-height:1.7;background:var(--bg);border-radius:8px;padding:10px 12px;">
+          <strong style="color:var(--accent);">Quick test layer:</strong><br/>
+          <span style="font-family:monospace;font-size:10px;">https://services.arcgis.com/P3ePLMYs2RVChkJx/ArcGIS/rest/services/World_Cities/FeatureServer/0</span>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button id="dialog-cancel" style="padding:9px 18px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);font-family:inherit;font-size:13px;cursor:pointer;">Cancel</button>
+          <button id="dialog-add" style="padding:9px 18px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:8px;color:white;font-family:inherit;font-size:13px;cursor:pointer;">Add Layer</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(dialog);
+    $("dialog-close").onclick  = () => dialog.remove();
+    $("dialog-cancel").onclick = () => dialog.remove();
+    $("dialog-add").onclick    = () => {
+      const url  = $("layer-url").value.trim();
+      const name = $("layer-name").value.trim() || "Layer";
+      const type = $("layer-type").value;
+      if (!url) { $("layer-url").style.borderColor = "#ef4444"; return; }
+      dialog.remove();
+      addLayer(url, name, type);
+    };
+  }
+
+  function addLayer(url, title, type) {
+    setStatus("loading", "Loading layer…");
+    const moduleMap = {
+      feature: "esri/layers/FeatureLayer",
+      tile:    "esri/layers/TileLayer",
+      csv:     "esri/layers/CSVLayer"
+    };
+    require([moduleMap[type] || "esri/layers/FeatureLayer"], function(LayerClass) {
+      const layer = new LayerClass({ url, title });
+      map.add(layer);
+
+      layer.when(() => {
+        try {
+          const labelField = layer.fields && layer.fields.find(f =>
+            f.type === "string" && !["objectid","globalid"].includes(f.name.toLowerCase())
+          );
+          if (labelField) {
+            layer.labelingInfo = [{
+              labelExpressionInfo: { expression: `$feature.${labelField.name}` },
+              symbol: {
+                type: "text", color: "white", haloColor: "black", haloSize: 2,
+                font: { family: "Arial", size: 12, weight: "bold" }
+              }
+            }];
+          }
+        } catch(e) {}
+
+        try {
+          const fields = layer.fields || [];
+          const field  = fields.find(f => f.type === "string" && !["objectid","globalid"].includes(f.name.toLowerCase()));
+          if (field) {
+            layer.queryFeatures().then(result => {
+              const values = [...new Set(result.features.map(f => f.attributes[field.name]))];
+              const geo = layer.geometryType;
+              const symbolFor2 = color => {
+                if (geo === "point" || geo === "multipoint") return { type:"simple-marker", color, size:8, outline:{color:"white",width:0.5} };
+                if (geo === "polyline") return { type:"simple-line", color, width:2 };
+                return { type:"simple-fill", color, outline:{color:"white",width:0.5} };
+              };
+              layer.renderer = {
+                type: "unique-value",
+                field: field.name,
+                uniqueValueInfos: values.map(val => ({
+                  value: val, label: val,
+                  symbol: symbolFor2([
+                    Math.floor(Math.random()*200)+30,
+                    Math.floor(Math.random()*200)+30,
+                    Math.floor(Math.random()*200)+30,
+                    0.8
+                  ])
+                }))
+              };
+            });
+          }
+        } catch(e) {}
+
+        try {
+          const popupFields = (layer.fields || []).filter(f => f.type !== "oid").map(f => ({ fieldName: f.name, label: f.alias || f.name, visible: true }));
+          layer.popupTemplate = { title: layer.title || "Information", content: [{ type:"fields", fieldInfos: popupFields }] };
+        } catch(e) {}
+
+        setStatus("ready", "Layer loaded");
+        renderLayerList(map.layers.items.filter(l => l !== graphicsLayer));
+        saveLayers();
+        if (mainView && layer.fullExtent) mainView.goTo(layer.fullExtent).catch(() => {});
+      }, err => {
+        setStatus("", "Layer error");
+        console.error(err);
+        alert("Could not load layer. Check the URL and try again.");
+      });
+    });
+  }
+
+  function renderLayerList(layers) {
+    const list = $("layer-list");
+    if (!layers.length) {
+      list.className = "layer-list-empty";
+      list.innerHTML = "No layers added yet.<br/>Use the button below to start.";
+      return;
+    }
+    list.className = "";
+    list.innerHTML = "";
+    layers.forEach((lyr, i) => {
+      const item = document.createElement("div");
+      item.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:7px 9px;margin-bottom:5px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:13px;`;
+      const left = document.createElement("div");
+      left.style.cssText = "display:flex;align-items:center;gap:7px;min-width:0;";
+      left.innerHTML = `<span style="width:9px;height:9px;border-radius:2px;background:var(--accent);flex-shrink:0;"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${lyr.title}">${lyr.title || "Layer "+(i+1)}</span>`;
+      const right = document.createElement("div");
+      right.style.cssText = "display:flex;gap:4px;flex-shrink:0;";
+      const visBtn = document.createElement("button");
+      visBtn.title = "Toggle visibility";
+      visBtn.style.cssText = "background:none;border:none;cursor:pointer;padding:3px;color:var(--text-muted);font-size:14px;";
+      visBtn.textContent = "👁";
+      visBtn.onclick = () => { lyr.visible = !lyr.visible; visBtn.style.opacity = lyr.visible ? "1" : "0.35"; };
+      const rmBtn = document.createElement("button");
+      rmBtn.title = "Remove layer";
+      rmBtn.style.cssText = "background:none;border:none;cursor:pointer;padding:3px;color:var(--text-muted);font-size:13px;";
+      rmBtn.textContent = "✕";
+      rmBtn.onclick = () => { map.remove(lyr); renderLayerList(map.layers.items.filter(l => l !== graphicsLayer)); saveLayers(); };
+      right.append(visBtn, rmBtn);
+      item.append(left, right);
+      list.appendChild(item);
+    });
+  }
+
+}); // end require
+
+// ══════════════════════════════════════════════════════════════
+// ── DARK / LIGHT MODE TOGGLE ──────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+(function() {
+  let isDark = true;
+  const btn = document.getElementById("theme-toggle-btn");
+  const esriCss = document.getElementById("esri-theme-css");
+
+  btn.addEventListener("click", () => {
+    isDark = !isDark;
+    document.body.classList.toggle("light-mode", !isDark);
+    esriCss.href = isDark
+      ? "https://js.arcgis.com/4.30/esri/themes/dark/main.css"
+      : "https://js.arcgis.com/4.30/esri/themes/light/main.css";
+    btn.innerHTML = isDark
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> Light Mode`
+      : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> Dark Mode`;
+  });
+})();
+
+// ══════════════════════════════════════════════════════════════
+// ── COLLAPSIBLE SIDEBAR SECTIONS ─────────────────────────────
+// ══════════════════════════════════════════════════════════════
+document.querySelectorAll(".section-header").forEach(header => {
+  header.addEventListener("click", () => {
+    const targetId = header.dataset.target;
+    const body     = document.getElementById(targetId);
+    if (!body) return;
+    const collapsed = body.classList.toggle("collapsed");
+    header.classList.toggle("collapsed", collapsed);
+  });
+});
+
+// Legend collapse
+document.getElementById("legendHeader").addEventListener("click", () => {
+  const body    = document.getElementById("legendBody");
+  const chevron = document.getElementById("legendChevron");
+  const isOpen  = body.style.display !== "none";
+  body.style.display = isOpen ? "none" : "block";
+  chevron.textContent = isOpen ? "▲" : "▼";
+});
+
+// ══════════════════════════════════════════════════════════════
+// ── SIDEBAR RESIZE (horizontal) ───────────────────────────────
+// ══════════════════════════════════════════════════════════════
+(function() {
+  const sidebar  = document.getElementById("sidebar");
+  const resizer  = document.getElementById("sidebar-resizer");
+  let dragging   = false;
+  let startX     = 0;
+  let startW     = 0;
+
+  resizer.addEventListener("mousedown", e => {
+    dragging = true;
+    startX = e.clientX;
+    startW = sidebar.offsetWidth;
+    resizer.classList.add("dragging");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  });
+
+  document.addEventListener("mousemove", e => {
+    if (!dragging) return;
+    const newW = Math.max(200, Math.min(520, startW + (e.clientX - startX)));
+    sidebar.style.width = newW + "px";
+    document.documentElement.style.setProperty("--sidebar-w", newW + "px");
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove("dragging");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  });
+})();
+
+// ══════════════════════════════════════════════════════════════
+// ── SECTION BODY VERTICAL RESIZE (ns-resize grips) ───────────
+// ══════════════════════════════════════════════════════════════
+document.querySelectorAll(".section-resize-grip").forEach(grip => {
+  let dragging = false;
+  let startY   = 0;
+  let startH   = 0;
+  const bodyId = grip.dataset.body;
+
+  grip.addEventListener("mousedown", e => {
+    const body = document.getElementById(bodyId);
+    if (!body || body.classList.contains("collapsed")) return;
+    dragging = true;
+    startY   = e.clientY;
+    startH   = body.offsetHeight;
+    grip.classList.add("dragging");
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+    e.stopPropagation();
+  });
+
+  document.addEventListener("mousemove", e => {
+    if (!dragging) return;
+    const body = document.getElementById(bodyId);
+    if (!body) return;
+    const newH = Math.max(60, Math.min(500, startH + (e.clientY - startY)));
+    body.style.maxHeight = newH + "px";
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    grip.classList.remove("dragging");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// ── STORY / MAP TOGGLE ────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+(function() {
+  // Replace with your published StoryMap URL (must be shared publicly).
+  const STORY_URL = "https://storymaps.arcgis.com/stories/0eb2ff54d1ab49a2bc5cf9b72c1ad182";
+
+  const btn      = document.getElementById("story-toggle-btn");
+  const overlay  = document.getElementById("story-overlay");
+  const iframe   = document.getElementById("story-iframe");
+  let storyOpen  = false;
+  let loaded     = false;
+
+  btn.addEventListener("click", () => {
+    storyOpen = !storyOpen;
+    if (storyOpen && !loaded) {
+      iframe.src = STORY_URL;
+      loaded = true;
+    }
+    overlay.classList.toggle("visible", storyOpen);
+    btn.classList.toggle("active", storyOpen);
+    btn.lastChild.textContent = storyOpen ? " View Map" : " View Story";
+  });
+})();
+
+// ══════════════════════════════════════════════════════════════
+// ── PWA: SERVICE WORKER REGISTRATION ─────────────────────────
+// ══════════════════════════════════════════════════════════════
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(err => {
+      console.warn("Service worker registration failed:", err);
+    });
+  });
+}
+
+// ── Fallback if ArcGIS CDN fails ──────────────────────────────
+window.addEventListener("load", () => {
+  if (typeof require === "undefined") {
+    const overlay = document.getElementById("loading-overlay");
+    overlay.classList.remove("hidden");
+    overlay.innerHTML = `
+      <div style="text-align:center;padding:24px;max-width:360px;">
+        <div style="font-size:32px;margin-bottom:12px;">⚠️</div>
+        <p style="color:#ef4444;font-size:15px;font-weight:600;margin-bottom:10px;">ArcGIS API failed to load</p>
+        <p style="color:#8b949e;font-size:13px;line-height:1.7;">
+          The ArcGIS CDN could not be reached. Try serving locally:<br/><br/>
+          <code style="background:#0d1117;padding:6px 10px;border-radius:6px;display:inline-block;color:#3b82f6;">python -m http.server 8080</code>
+        </p>
+      </div>
+    `;
+  }
+});
+</script>
+</body>
+</html>
