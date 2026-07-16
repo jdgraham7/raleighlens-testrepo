@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raleigh Neighbors — Community Forum</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     DESIGN TOKENS
+     A civic, paper-and-ink palette drawn from Raleigh's own
+     materials: brick rowhouses, oak canopy (the "City of Oaks"),
+     and hand-lettered street signage. Each neighborhood carries
+     a fixed accent color, the same idea as a legend color on a
+     GIS layer — meant to visually rhyme with the companion map app.
+     ============================================================ */
+  :root{
+    --paper:      #F1EEE4;
+    --paper-raised:#FBF9F3;
+    --ink:        #232A2E;
+    --ink-soft:   #5B6165;
+    --line:       #C9C2AE;
+    --oak:        #3F5D45;
+    --oak-dark:   #2E4634;
+    --brick:      #A8442E;
+    --gold:       #C89B3C;
+
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-body: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+    --radius: 10px;
+  }
+
+  *{ box-sizing: border-box; }
+  html{ scroll-behavior: smooth; }
+  body{
+    margin:0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+
+  a{ color: inherit; }
+  button{ font-family: inherit; }
+  :focus-visible{ outline: 2px solid var(--oak); outline-offset: 2px; }
+
+  /* ---------- Header ---------- */
+  .site-header{
+    background: var(--oak-dark);
+    color: var(--paper-raised);
+    padding: 18px 24px;
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    border-bottom: 4px solid var(--brick);
+  }
+  .wordmark{
+    font-family: var(--font-display);
+    font-weight:700;
+    font-size: 1.5rem;
+    letter-spacing: 0.01em;
+    display:flex; align-items:baseline; gap:8px;
+  }
+  .wordmark span{
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight:500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold);
+    padding-top:2px;
+  }
+  .header-actions{ margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .search-box{
+    background: rgba(251,249,243,0.08);
+    border: 1px solid rgba(251,249,243,0.25);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--paper-raised);
+    font-size: 0.85rem;
+    width: 180px;
+  }
+  .search-box::placeholder{ color: rgba(251,249,243,0.5); }
+
+  .btn{
+    font-family: var(--font-body);
+    font-weight:600;
+    font-size: 0.85rem;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    padding: 9px 16px;
+    cursor:pointer;
+    transition: transform 0.12s ease, background 0.15s ease;
+  }
+  .btn:active{ transform: translateY(1px); }
+  .btn-primary{ background: var(--brick); color: #FBF6EF; }
+  .btn-primary:hover{ background: #8f3a26; }
+  .btn-ghost{ background: transparent; border-color: rgba(251,249,243,0.3); color: var(--paper-raised); }
+  .btn-ghost:hover{ background: rgba(251,249,243,0.1); }
+  .btn-secondary{ background: var(--paper-raised); border-color: var(--line); color: var(--ink); }
+  .btn-secondary:hover{ background: #f2eee2; }
+
+  /* ---------- Layout ---------- */
+  .layout{
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 24px;
+    display:grid;
+    grid-template-columns: 240px 1fr;
+    gap: 24px;
+    align-items:start;
+  }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    position: sticky;
+    top: 24px;
+  }
+  .sidebar h2{
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 12px;
+  }
+  .neighborhood-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
+  .neighborhood-list button{
+    width:100%;
+    display:flex; align-items:center; gap:10px;
+    background: none; border:none; text-align:left;
+    padding: 8px 8px;
+    border-radius: 7px;
+    font-size: 0.88rem;
+    color: var(--ink);
+    cursor:pointer;
+  }
+  .neighborhood-list button:hover{ background: rgba(63,93,69,0.08); }
+  .neighborhood-list button.active{ background: var(--oak); color: #fff; }
+  .neighborhood-list button.active .count{ color: rgba(255,255,255,0.75); }
+  .dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .neighborhood-list .count{ margin-left:auto; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); }
+
+  /* ---------- Feed ---------- */
+  .feed-header{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    margin-bottom: 16px; flex-wrap:wrap;
+  }
+  .feed-title{
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight:600;
+    display:flex; align-items:center; gap:10px;
+  }
+  .feed-title .dot{ width:12px; height:12px; }
+  .sort-toggle{ display:flex; gap:6px; }
+  .sort-toggle button{
+    font-family: var(--font-mono); font-size: 0.72rem; letter-spacing:0.06em; text-transform:uppercase;
+    background: var(--paper-raised); border:1px solid var(--line); border-radius:7px;
+    padding: 6px 10px; cursor:pointer; color: var(--ink-soft);
+  }
+  .sort-toggle button.active{ background: var(--ink); color: var(--paper-raised); border-color: var(--ink); }
+
+  .post-card{
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-left: 5px solid var(--oak);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    display:flex; gap:14px;
+  }
+  .vote-col{ display:flex; flex-direction:column; align-items:center; gap:2px; padding-top:2px; }
+  .vote-btn{
+    background:none; border:1px solid var(--line); border-radius:6px;
+    width:30px; height:26px; cursor:pointer; font-size:0.9rem; color: var(--oak);
+  }
+  .vote-btn:hover{ background: rgba(63,93,69,0.1); }
+  .vote-count{ font-family: var(--font-mono); font-weight:500; font-size:0.85rem; }
+
+  .post-body{ flex:1; min-width:0; }
+  .post-meta{
+    font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    display:flex; gap:8px; align-items:center; margin-bottom:4px; flex-wrap:wrap;
+  }
+  .post-title{
+    font-family: var(--font-display); font-size: 1.1rem; font-weight:600;
+    margin: 0 0 4px; cursor:pointer;
+  }
+  .post-title:hover{ text-decoration: underline; }
+  .post-snippet{ color: var(--ink-soft); font-size: 0.92rem; margin: 0 0 8px; }
+  .post-footer{ display:flex; gap:14px; align-items:center; }
+  .comment-link{
+    background:none; border:none; cursor:pointer; font-size:0.82rem; color: var(--ink-soft);
+    display:flex; gap:5px; align-items:center; padding:0;
+  }
+  .comment-link:hover{ color: var(--ink); }
+
+  .empty-state{
+    background: var(--paper-raised); border: 1px dashed var(--line); border-radius: var(--radius);
+    padding: 36px 20px; text-align:center; color: var(--ink-soft);
+  }
+  .empty-state strong{ display:block; color: var(--ink); font-family: var(--font-display); font-size:1.1rem; margin-bottom:6px; }
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; background: rgba(35,42,46,0.55);
+    display:none; align-items:flex-start; justify-content:center; padding: 40px 16px; z-index: 50;
+    overflow-y:auto;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal{
+    background: var(--paper-raised); border-radius: 12px; max-width: 560px; width:100%;
+    padding: 24px; border-top: 5px solid var(--brick);
+  }
+  .modal h3{ font-family: var(--font-display); margin:0 0 16px; font-size:1.3rem; }
+  .field{ margin-bottom: 14px; }
+  .field label{ display:block; font-size:0.78rem; font-weight:600; margin-bottom:5px; color: var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; }
+  .field input, .field select, .field textarea{
+    width:100%; padding: 9px 11px; border:1px solid var(--line); border-radius:7px;
+    font-family: var(--font-body); font-size:0.92rem; background: var(--paper); color: var(--ink);
+  }
+  .field textarea{ resize: vertical; min-height: 90px; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top: 18px; }
+
+  /* ---------- Post detail ---------- */
+  .detail-back{ background:none; border:none; cursor:pointer; color: var(--ink-soft); font-size:0.85rem; margin-bottom:12px; padding:0; }
+  .detail-back:hover{ color: var(--ink); }
+  .detail-card{ background: var(--paper-raised); border:1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; }
+  .detail-title{ font-family: var(--font-display); font-size:1.5rem; margin: 6px 0 4px; }
+  .detail-body{ margin: 10px 0 18px; font-size: 0.96rem; }
+  .comments-section h4{ font-family: var(--font-mono); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.1em; color: var(--ink-soft); margin: 18px 0 10px; border-top:1px solid var(--line); padding-top:16px; }
+  .comment{ padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .comment:last-child{ border-bottom:none; }
+  .comment-meta{ font-family: var(--font-mono); font-size:0.68rem; color: var(--ink-soft); text-transform:uppercase; margin-bottom:3px; }
+  .comment-form{ display:flex; gap:8px; margin-top:14px; }
+  .comment-form input{ flex:1; padding:9px 11px; border:1px solid var(--line); border-radius:7px; font-family: var(--font-body); }
+
+  .demo-banner{
+    background: #FCF3D9; border:1px solid var(--gold); color:#6b5518;
+    font-size:0.78rem; padding:8px 14px; border-radius:8px; margin: 0 24px 0; max-width:1080px; margin:16px auto 0;
+    text-align:center;
+  }
+
+  /* ---------- Mobile ---------- */
+  @media (max-width: 760px){
+    .layout{ grid-template-columns: 1fr; padding: 16px; }
+    .sidebar{ position:static; padding:12px; }
+    .neighborhood-list{ flex-direction:row; overflow-x:auto; gap:8px; padding-bottom:4px; }
+    .neighborhood-list button{ flex-shrink:0; white-space:nowrap; }
+    .search-box{ width: 130px; }
+    .header-actions{ margin-left:0; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wordmark">🏡 Raleigh Neighbors <span>Community Forum</span></div>
+  <div class="header-actions">
+    <input class="search-box" id="searchInput" type="text" placeholder="Search posts…">
+    <button class="btn btn-ghost" id="sortAllBtn">All neighborhoods</button>
+    <button class="btn btn-primary" id="newPostBtn">+ New post</button>
+  </div>
+</header>
+
+<div class="demo-banner">
+  Demo mode — posts are stored in your browser only (localStorage), not shared or saved to a server yet. See the code comments for where to wire up a real backend.
+</div>
+
+<div class="layout">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <h2>Neighborhoods</h2>
+    <ul class="neighborhood-list" id="neighborhoodList"></ul>
+  </aside>
+
+  <!-- ============ MAIN: feed or detail ============ -->
+  <main id="mainView">
+    <div id="feedView">
+      <div class="feed-header">
+        <div class="feed-title">
+          <span class="dot" id="feedDot" style="background:var(--oak)"></span>
+          <span id="feedHeading">All neighborhoods</span>
+        </div>
+        <div class="sort-toggle">
+          <button data-sort="new" class="active">Newest</button>
+          <button data-sort="top">Top</button>
+        </div>
+      </div>
+      <div id="postList"></div>
+    </div>
+
+    <div id="detailView" style="display:none;"></div>
+  </main>
+</div>
+
+<!-- ============ NEW POST MODAL ============ -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3>Start a new post</h3>
+    <div class="field">
+      <label for="postNeighborhood">Neighborhood</label>
+      <select id="postNeighborhood"></select>
+    </div>
+    <div class="field">
+      <label for="postTitle">Title</label>
+      <input id="postTitle" type="text" placeholder="What's going on?">
+    </div>
+    <div class="field">
+      <label for="postBody">Details</label>
+      <textarea id="postBody" placeholder="Share what's happening, ask a question, or start a conversation…"></textarea>
+    </div>
+    <div class="field">
+      <label for="postAuthor">Your name (optional)</label>
+      <input id="postAuthor" type="text" placeholder="Anonymous resident">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="cancelPostBtn">Cancel</button>
+      <button class="btn btn-primary" id="submitPostBtn">Publish post</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   RALEIGH NEIGHBORS — COMMUNITY FORUM (static demo build)
+   ----------------------------------------------------------------
+   This is a self-contained, no-build, vanilla-JS single page app,
+   matching the style of this repo's index.html mapping app so it
+   can sit alongside it and deploy straight to GitHub Pages.
+
+   DATA MODEL
+   All state lives in localStorage under the key "raleighForumData".
+   This is a MOCK persistence layer for demo purposes only:
+     - it is per-browser, not shared between residents
+     - there is no auth — "author" is just a free-text label
+   When you're ready for a real backend, the functions to replace
+   are clearly marked "// API:" below — swap the localStorage
+   reads/writes for fetch() calls to your backend of choice.
+
+   NEIGHBORHOOD → MAP TIE-IN
+   NEIGHBORHOODS below is a short placeholder list. Replace it with
+   the real names/IDs from your Neighborhood Registry dataset so the
+   forum's neighborhood filter lines up with the polygons in your
+   ArcGIS JS API app. Keep the same "id" values in both places if you
+   want to deep-link from a map click straight into a forum filter,
+   e.g. forum.html?neighborhood=oakwood
+   ================================================================ */
+
+const NEIGHBORHOODS = [
+  { id: 'oakwood',        name: 'Oakwood',            color: '#A8442E' },
+  { id: 'five-points',    name: 'Five Points',        color: '#3F5D45' },
+  { id: 'north-hills',    name: 'North Hills',        color: '#2E6E8E' },
+  { id: 'downtown',       name: 'Downtown',           color: '#C89B3C' },
+  { id: 'boylan-heights', name: 'Boylan Heights',     color: '#7A4B8C' },
+  { id: 'method',         name: 'Method',             color: '#6E8B3D' },
+  { id: 'se-raleigh',     name: 'Southeast Raleigh',  color: '#B85C6B' },
+  { id: 'glenwood-south', name: 'Glenwood South',     color: '#3E7CB1' },
+];
+
+const STORAGE_KEY = 'raleighForumData';
+
+const SEED_POSTS = [
+  {
+    id: 'p1', neighborhood: 'oakwood', author: 'Marcus T.',
+    title: 'Anyone else notice the new streetlights on Elm St?',
+    body: "They finally replaced the two lights that had been out since spring. Whole block feels a lot safer walking home at night. Curious if this was a work order someone put in, or part of a bigger upgrade.",
+    votes: 14, ts: Date.now() - 1000*60*60*6,
+    comments: [
+      { author:'Priya S.', body:'I put in a work order for this back in March — glad it finally got fixed!', ts: Date.now() - 1000*60*60*4 },
+    ]
+  },
+  {
+    id: 'p2', neighborhood: 'five-points', author: 'Dana R.',
+    title: 'Farmers market pop-up this Saturday',
+    body: 'Local vendors setting up in the Five Points parking lot 9am-1pm. Produce, baked goods, and a couple of food trucks. First one of the summer!',
+    votes: 22, ts: Date.now() - 1000*60*60*20,
+    comments: []
+  },
+  {
+    id: 'p3', neighborhood: 'se-raleigh', author: 'Anonymous resident',
+    title: 'Question about the affordable housing application process',
+    body: "I've been trying to find clear info on how the affordable housing waitlist works for our area. Has anyone gone through the process recently? Would appreciate hearing what to expect.",
+    votes: 9, ts: Date.now() - 1000*60*60*30,
+    comments: [
+      { author:'Keisha M.', body:'It took about 3 months for me from application to first contact — happy to answer questions.', ts: Date.now() - 1000*60*60*26 }
+    ]
+  },
+  {
+    id: 'p4', neighborhood: 'north-hills', author: 'Owen F.',
+    title: 'Sidewalk construction timeline on Six Forks Rd?',
+    body: 'The stretch near the shopping center has been torn up for weeks. Does anyone know the expected completion date?',
+    votes: 5, ts: Date.now() - 1000*60*60*50,
+    comments: []
+  },
+];
+
+/* ---------- persistence helpers (swap these for API calls later) ---------- */
+// API: replace with GET /api/posts
+function loadPosts(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw) return JSON.parse(raw);
+  savePosts(SEED_POSTS);
+  return SEED_POSTS;
+}
+// API: replace with POST/PUT /api/posts
+function savePosts(posts){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
+}
+
+let posts = loadPosts();
+let activeNeighborhood = 'all';
+let activeSort = 'new';
+let searchTerm = '';
+let openPostId = null;
+
+/* ---------- rendering ---------- */
+function neighborhoodById(id){
+  return NEIGHBORHOODS.find(n => n.id === id);
+}
+
+function timeAgo(ts){
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.round(mins/60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.round(hrs/24) + 'd ago';
+}
+
+function renderSidebar(){
+  const list = document.getElementById('neighborhoodList');
+  const counts = {};
+  posts.forEach(p => counts[p.neighborhood] = (counts[p.neighborhood]||0) + 1);
+
+  let html = `<li><button data-id="all" class="${activeNeighborhood==='all'?'active':''}">
+      <span class="dot" style="background:var(--ink-soft)"></span> All neighborhoods
+      <span class="count">${posts.length}</span></button></li>`;
+
+  NEIGHBORHOODS.forEach(n => {
+    html += `<li><button data-id="${n.id}" class="${activeNeighborhood===n.id?'active':''}">
+        <span class="dot" style="background:${n.color}"></span> ${n.name}
+        <span class="count">${counts[n.id]||0}</span></button></li>`;
+  });
+  list.innerHTML = html;
+
+  list.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeNeighborhood = btn.dataset.id;
+      openPostId = null;
+      render();
+    });
+  });
+}
+
+function filteredSortedPosts(){
+  let result = posts.filter(p => activeNeighborhood === 'all' || p.neighborhood === activeNeighborhood);
+  if (searchTerm.trim()){
+    const q = searchTerm.toLowerCase();
+    result = result.filter(p => p.title.toLowerCase().includes(q) || p.body.toLowerCase().includes(q));
+  }
+  result = result.slice().sort((a,b) => activeSort === 'top' ? b.votes - a.votes : b.ts - a.ts);
+  return result;
+}
+
+function renderFeedHeader(){
+  const dot = document.getElementById('feedDot');
+  const heading = document.getElementById('feedHeading');
+  if (activeNeighborhood === 'all'){
+    dot.style.background = 'var(--ink-soft)';
+    heading.textContent = 'All neighborhoods';
+  } else {
+    const n = neighborhoodById(activeNeighborhood);
+    dot.style.background = n.color;
+    heading.textContent = n.name;
+  }
+  document.querySelectorAll('.sort-toggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.sort === activeSort);
+  });
+}
+
+function renderFeed(){
+  const list = filteredSortedPosts();
+  const container = document.getElementById('postList');
+
+  if (list.length === 0){
+    container.innerHTML = `<div class="empty-state">
+      <strong>No posts here yet</strong>
+      Be the first to start a conversation for this neighborhood.
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = list.map(p => {
+    const n = neighborhoodById(p.neighborhood);
+    return `<div class="post-card" style="border-left-color:${n.color}">
+      <div class="vote-col">
+        <button class="vote-btn" data-vote="${p.id}">▲</button>
+        <span class="vote-count">${p.votes}</span>
+      </div>
+      <div class="post-body">
+        <div class="post-meta">
+          <span style="color:${n.color}">${n.name}</span> · ${p.author} · ${timeAgo(p.ts)}
+        </div>
+        <h3 class="post-title" data-open="${p.id}">${escapeHtml(p.title)}</h3>
+        <p class="post-snippet">${escapeHtml(p.body).slice(0,140)}${p.body.length>140?'…':''}</p>
+        <div class="post-footer">
+          <button class="comment-link" data-open="${p.id}">💬 ${p.comments.length} comment${p.comments.length===1?'':'s'}</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('[data-vote]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const post = posts.find(p => p.id === btn.dataset.vote);
+      post.votes += 1;
+      savePosts(posts);
+      render();
+    });
+  });
+  container.querySelectorAll('[data-open]').forEach(el => {
+    el.addEventListener('click', () => {
+      openPostId = el.dataset.open;
+      render();
+    });
+  });
+}
+
+function renderDetail(){
+  const post = posts.find(p => p.id === openPostId);
+  const n = neighborhoodById(post.neighborhood);
+  const view = document.getElementById('detailView');
+  view.innerHTML = `
+    <button class="detail-back" id="backBtn">← Back to feed</button>
+    <div class="detail-card" style="border-left:5px solid ${n.color}">
+      <div class="post-meta"><span style="color:${n.color}">${n.name}</span> · ${post.author} · ${timeAgo(post.ts)}</div>
+      <h2 class="detail-title">${escapeHtml(post.title)}</h2>
+      <p class="detail-body">${escapeHtml(post.body)}</p>
+      <div class="vote-col" style="flex-direction:row; align-items:center; gap:8px;">
+        <button class="vote-btn" id="detailVoteBtn">▲</button>
+        <span class="vote-count">${post.votes} upvotes</span>
+      </div>
+      <div class="comments-section">
+        <h4>${post.comments.length} Comment${post.comments.length===1?'':'s'}</h4>
+        <div id="commentsList">
+          ${post.comments.map(c => `<div class="comment">
+              <div class="comment-meta">${escapeHtml(c.author)} · ${timeAgo(c.ts)}</div>
+              <div>${escapeHtml(c.body)}</div>
+            </div>`).join('') || '<p style="color:var(--ink-soft); font-size:0.88rem;">No comments yet — add the first one.</p>'}
+        </div>
+        <div class="comment-form">
+          <input type="text" id="newCommentInput" placeholder="Add a comment…">
+          <button class="btn btn-primary" id="submitCommentBtn">Reply</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('backBtn').addEventListener('click', () => { openPostId = null; render(); });
+  document.getElementById('detailVoteBtn').addEventListener('click', () => {
+    post.votes += 1; savePosts(posts); render();
+  });
+  document.getElementById('submitCommentBtn').addEventListener('click', () => {
+    const input = document.getElementById('newCommentInput');
+    const body = input.value.trim();
+    if (!body) return;
+    post.comments.push({ author: 'You', body, ts: Date.now() });
+    savePosts(posts);
+    render();
+  });
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function render(){
+  renderSidebar();
+  const feedView = document.getElementById('feedView');
+  const detailView = document.getElementById('detailView');
+  if (openPostId){
+    feedView.style.display = 'none';
+    detailView.style.display = 'block';
+    renderDetail();
+  } else {
+    feedView.style.display = 'block';
+    detailView.style.display = 'none';
+    renderFeedHeader();
+    renderFeed();
+  }
+}
+
+/* ---------- controls ---------- */
+document.getElementById('sortAllBtn').addEventListener('click', () => {
+  activeNeighborhood = 'all'; openPostId = null; render();
+});
+document.querySelectorAll('.sort-toggle button').forEach(btn => {
+  btn.addEventListener('click', () => { activeSort = btn.dataset.sort; render(); });
+});
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  searchTerm = e.target.value; render();
+});
+
+/* ---------- new post modal ---------- */
+const overlay = document.getElementById('modalOverlay');
+const neighborhoodSelect = document.getElementById('postNeighborhood');
+neighborhoodSelect.innerHTML = NEIGHBORHOODS.map(n => `<option value="${n.id}">${n.name}</option>`).join('');
+
+document.getElementById('newPostBtn').addEventListener('click', () => {
+  if (activeNeighborhood !== 'all') neighborhoodSelect.value = activeNeighborhood;
+  overlay.classList.add('open');
+});
+document.getElementById('cancelPostBtn').addEventListener('click', () => overlay.classList.remove('open'));
+overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('open'); });
+
+document.getElementById('submitPostBtn').addEventListener('click', () => {
+  const title = document.getElementById('postTitle').value.trim();
+  const body = document.getElementById('postBody').value.trim();
+  const author = document.getElementById('postAuthor').value.trim() || 'Anonymous resident';
+  const neighborhood = neighborhoodSelect.value;
+  if (!title || !body){
+    alert('Please add a title and some details before publishing.');
+    return;
+  }
+  posts.unshift({
+    id: 'p' + Date.now(), neighborhood, author, title, body,
+    votes: 0, ts: Date.now(), comments: []
+  });
+  savePosts(posts);
+  document.getElementById('postTitle').value = '';
+  document.getElementById('postBody').value = '';
+  document.getElementById('postAuthor').value = '';
+  overlay.classList.remove('open');
+  activeNeighborhood = neighborhood;
+  render();
+});
+
+/* ---------- deep link support: forum.html?neighborhood=oakwood ---------- */
+(function initFromQuery(){
+  const params = new URLSearchParams(window.location.search);
+  const n = params.get('neighborhood');
+  if (n && neighborhoodById(n)) activeNeighborhood = n;
+})();
+
+render();
+</script>
+</body>
+</html>
